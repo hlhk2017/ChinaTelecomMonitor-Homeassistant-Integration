@@ -1,14 +1,13 @@
 import voluptuous as vol
 from homeassistant import config_entries
-from .const import CONF_API_URL, CONF_PHONENUM, CONF_PASSWORD, DOMAIN
+# 移除对 CONF_API_URL 的导入，因为不再需要它
+from .const import DOMAIN, CONF_PHONENUM, CONF_PASSWORD # 移除 CONF_API_URL
 import re
+import logging
 
-# 验证 API URL 的格式
-def validate_api_url(url):
-    pattern = re.compile(r'^https?://[^\s/$.?#].[^\s]*$')
-    if not pattern.match(url):
-        raise vol.Invalid("无效的 API URL，请输入有效的 URL 地址")
-    return url
+_LOGGER = logging.getLogger(__name__) # 添加 logger
+
+# 移除 validate_api_url 函数，因为它不再需要
 
 # 验证手机号码的格式
 def validate_phone_number(phone):
@@ -22,8 +21,8 @@ class ChinaTelecomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             try:
-                # 验证用户输入
-                user_input[CONF_API_URL] = validate_api_url(user_input[CONF_API_URL])
+                # 移除对 CONF_API_URL 的验证
+                # user_input[CONF_API_URL] = validate_api_url(user_input[CONF_API_URL])
                 user_input[CONF_PHONENUM] = validate_phone_number(user_input[CONF_PHONENUM])
 
                 # 检查是否已经配置过该手机号码
@@ -35,14 +34,16 @@ class ChinaTelecomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             except vol.Invalid as e:
                 errors["base"] = str(e)
+                _LOGGER.error(f"配置验证失败: {e}") # 记录错误
             except Exception as e:
                 errors["base"] = "配置过程中出现未知错误，请重试"
+                _LOGGER.exception("配置过程中出现未知错误") # 记录详细异常信息
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_API_URL): str,
+                    # 移除 vol.Required(CONF_API_URL): str,
                     vol.Required(CONF_PHONENUM): str,
                     vol.Required(CONF_PASSWORD): str,
                 }
@@ -54,8 +55,8 @@ class ChinaTelecomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_import(self, import_config):
         """Import a config entry from configuration.yaml."""
         try:
-            # 验证导入的配置
-            import_config[CONF_API_URL] = validate_api_url(import_config[CONF_API_URL])
+            # 移除对 CONF_API_URL 的验证
+            # import_config[CONF_API_URL] = validate_api_url(import_config[CONF_API_URL])
             import_config[CONF_PHONENUM] = validate_phone_number(import_config[CONF_PHONENUM])
 
             await self.async_set_unique_id(import_config[CONF_PHONENUM])
@@ -68,4 +69,3 @@ class ChinaTelecomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception as e:
             _LOGGER.error(f"从配置文件导入时出现未知错误: {str(e)}")
         return self.async_abort(reason="import_failed")
-    
