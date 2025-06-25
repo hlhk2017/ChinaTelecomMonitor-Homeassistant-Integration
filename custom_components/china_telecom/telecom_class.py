@@ -228,8 +228,6 @@ PMpq0/XKBO8lYhN/gwIDAQAB
         balance = int(
             float(data["balanceInfo"]["indexBalanceDataInfo"]["balance"] or 0) * 100
         )
-        # ===== 新增：本月消费 =====
-        # 确保 phoneBillRegion 存在，避免 KeyError
         current_month_cost_str = data["balanceInfo"].get("phoneBillRegion", {}).get("subTitleHh", "0元").replace('元', '')
         try:
             current_month_cost = int(float(current_month_cost_str) * 100) # 转换为分
@@ -293,8 +291,6 @@ PMpq0/XKBO8lYhN/gwIDAQAB
             "flowItems": flowItems,
         }
         return summary
-
-# ... (后面的代码保持不变) ...
 
     def convert_flow(self, size_str, target_unit="KB", decimal=0):
         unit_dict = {"KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
