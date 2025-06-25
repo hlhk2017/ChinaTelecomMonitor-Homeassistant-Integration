@@ -1,12 +1,12 @@
 import logging
 import asyncio
-# import aiohttp  # 移除对 aiohttp 的依赖，因为我们不再调用外部 API
+
 from datetime import timedelta
 import uuid
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.device_registry import DeviceEntryType
-# 修正导入：移除 CONF_API_URL
+
 from .const import DOMAIN, CONF_PHONENUM, CONF_PASSWORD, CONF_DEVICE_ID #
 
 # 导入 telecom_class
@@ -17,7 +17,6 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up the China Telecom sensors."""
-    # api_url = entry.data[CONF_API_URL] # 不再需要 api_url
     phonenum = entry.data[CONF_PHONENUM]
     password = entry.data[CONF_PASSWORD]
 
@@ -30,7 +29,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         device_id = entry.data[CONF_DEVICE_ID]
 
     coordinator = ChinaTelecomDataUpdateCoordinator(
-        hass, phonenum, password # 移除 api_url 参数
+        hass, phonenum, password 
     )
     await coordinator.async_refresh()
 
@@ -65,18 +64,14 @@ async def async_setup_entry(hass, entry, async_add_entities):
     sensors.append(ChinaTelecomSensor(coordinator, "voicePercentUsed", f"{masked_phonenum} 通话使用率", "%", "mdi:percent", device_id))
 
 
-    # CTM项目没有直接返回积分，Home Assistant 集成原有的积分项可能需要调整或移除
-    # sensors.append(ChinaTelecomSensor(coordinator, "points", f"{masked_phonenum} 电信积分", "", "mdi:star", device_id))
-
     async_add_entities(sensors)
 
 
 class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching China Telecom data."""
 
-    def __init__(self, hass, phonenum, password): # 移除 api_url 参数
+    def __init__(self, hass, phonenum, password): 
         """Initialize."""
-        # self.api_url = api_url # 移除 api_url
         self.phonenum = phonenum
         self.password = password
         self.telecom = Telecom() # 实例化 Telecom 类
@@ -227,7 +222,6 @@ class ChinaTelecomSensor(Entity):
         self._unit = unit
         self._icon = icon
         self._device_id = device_id
-        # 提取隐去中间四位的号码，因为 config_flow 确保了号码格式，可以直接使用
         phonenum_full = self.coordinator.phonenum
         self.masked_phonenum = f"{phonenum_full[:3]}****{phonenum_full[7:]}"
         self._unique_id = f"{self.masked_phonenum}_{device_id}_{key}"  # 在实体 ID 中添加号码
