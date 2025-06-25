@@ -1,13 +1,11 @@
 import voluptuous as vol
 from homeassistant import config_entries
-# 移除对 CONF_API_URL 的导入，因为不再需要它
 from .const import DOMAIN, CONF_PHONENUM, CONF_PASSWORD # 移除 CONF_API_URL
 import re
 import logging
 
 _LOGGER = logging.getLogger(__name__) # 添加 logger
 
-# 移除 validate_api_url 函数，因为它不再需要
 
 # 验证手机号码的格式
 def validate_phone_number(phone):
@@ -21,8 +19,6 @@ class ChinaTelecomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             try:
-                # 移除对 CONF_API_URL 的验证
-                # user_input[CONF_API_URL] = validate_api_url(user_input[CONF_API_URL])
                 user_input[CONF_PHONENUM] = validate_phone_number(user_input[CONF_PHONENUM])
 
                 # 检查是否已经配置过该手机号码
@@ -43,7 +39,6 @@ class ChinaTelecomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    # 移除 vol.Required(CONF_API_URL): str,
                     vol.Required(CONF_PHONENUM): str,
                     vol.Required(CONF_PASSWORD): str,
                 }
@@ -55,8 +50,6 @@ class ChinaTelecomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_import(self, import_config):
         """Import a config entry from configuration.yaml."""
         try:
-            # 移除对 CONF_API_URL 的验证
-            # import_config[CONF_API_URL] = validate_api_url(import_config[CONF_API_URL])
             import_config[CONF_PHONENUM] = validate_phone_number(import_config[CONF_PHONENUM])
 
             await self.async_set_unique_id(import_config[CONF_PHONENUM])
