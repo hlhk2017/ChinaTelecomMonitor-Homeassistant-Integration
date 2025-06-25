@@ -273,8 +273,8 @@ class ChinaTelecomSensor(Entity):
             "name": f"{self.masked_phonenum} 套餐信息",
             "manufacturer": "中国电信",
             "entry_type": DeviceEntryType.SERVICE,
-            "model": "CTM中国电信", # 可以修改为其他描述
-            "sw_version": "1.0.0" # 可以是你的集成版本
+            "model": "CTM中国电信", # 
+            "sw_version": "1.0.5" 
         }
 
     @property
