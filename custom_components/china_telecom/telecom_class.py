@@ -129,6 +129,7 @@ PMpq0/XKBO8lYhN/gwIDAQAB
         return response.json()
 
     def user_flux_package(self, **kwargs):
+        billing_cycle = kwargs.get("billing_cycle") or datetime.now().strftime("%Y%m")
         ts = datetime.now().strftime("%Y%m%d%H%M00")
         body = {
             "content": {
@@ -203,27 +204,35 @@ PMpq0/XKBO8lYhN/gwIDAQAB
         if not data:
             return {}
         phonenum = phonenum or self.phonenum
+
+        # Default to empty dicts if flowInfo or voiceInfo are None
+        flow_info = data.get("flowInfo") or {}
+        voice_info = data.get("voiceInfo") or {}
+
         # 总流量
-        total_amount = data["flowInfo"].get("totalAmount") or {}
+        total_amount = flow_info.get("totalAmount") or {}
         flow_use = int(total_amount.get("used") or 0)
         flow_balance = int(total_amount.get("balance") or 0)
         flow_total = flow_use + flow_balance
         flow_over = int(total_amount.get("over") or 0)
         # 通用流量
-        common_flow = data["flowInfo"].get("commonFlow") or {}
+        common_flow = flow_info.get("commonFlow") or {}
         common_use = int(common_flow.get("used") or 0)
         common_balance = int(common_flow.get("balance") or 0)
         common_total = common_use + common_balance
         common_over = int(common_flow.get("over") or 0)
         # 专用流量
-        special_amount = data["flowInfo"].get("specialAmount") or {}
+        special_amount = flow_info.get("specialAmount") or {}
         special_use = int(special_amount.get("used") or 0)
         special_balance = int(special_amount.get("balance") or 0)
         special_total = special_use + special_balance
+
         # 语音通话
-        voice_usage = int(data["voiceInfo"]["voiceDataInfo"]["used"] or 0)
-        voice_balance = int(data["voiceInfo"]["voiceDataInfo"]["balance"] or 0)
-        voice_total = int(data["voiceInfo"]["voiceDataInfo"]["total"] or 0)
+        voice_data_info = voice_info.get("voiceDataInfo") or {}
+        voice_usage = int(voice_data_info.get("used") or 0)
+        voice_balance = int(voice_data_info.get("balance") or 0)
+        voice_total = int(voice_data_info.get("total") or 0)
+        
         # 余额
         balance = int(
             float(data["balanceInfo"]["indexBalanceDataInfo"]["balance"] or 0) * 100
@@ -236,7 +245,7 @@ PMpq0/XKBO8lYhN/gwIDAQAB
         # ==========================
         # 流量包列表
         flowItems = []
-        flow_lists = data.get("flowInfo", {}).get("flowList", [])
+        flow_lists = flow_info.get("flowList", [])
         for item in flow_lists:
             if "流量" not in item["title"]:
                 continue
