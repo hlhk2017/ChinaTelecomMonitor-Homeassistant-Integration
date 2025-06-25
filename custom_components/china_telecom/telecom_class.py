@@ -199,8 +199,6 @@ PMpq0/XKBO8lYhN/gwIDAQAB
                         )
         return data
 
-# ... (前面的代码保持不变) ...
-
     def to_summary(self, data, phonenum=""):
         if not data:
             return {}
