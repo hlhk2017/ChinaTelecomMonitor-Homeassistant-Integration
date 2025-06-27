@@ -53,17 +53,20 @@ async def async_setup_entry(hass, entry, async_add_entities):
     sensors.append(ChinaTelecomSensor(coordinator, "commonOver", f"{masked_phonenum} 通用流量超量", "GB", "mdi:network-off", device_id))
     sensors.append(ChinaTelecomSensor(coordinator, "specialTotal", f"{masked_phonenum} 专用流量总量", "GB", "mdi:network", device_id))
     sensors.append(ChinaTelecomSensor(coordinator, "specialUse", f"{masked_phonenum} 专用流量已用", "GB", "mdi:network", device_id))
-    # 新增流量使用率传感器
+    # 流量使用率传感器
     sensors.append(ChinaTelecomSensor(coordinator, "percentUsed", f"{masked_phonenum} 流量使用率", "%", "mdi:percent", device_id))
-
+    
     # 通话信息
     sensors.append(ChinaTelecomSensor(coordinator, "voiceTotal", f"{masked_phonenum} 通话总量", "分钟", "mdi:phone", device_id))
     sensors.append(ChinaTelecomSensor(coordinator, "voiceUsage", f"{masked_phonenum} 通话已用", "分钟", "mdi:phone", device_id))
     sensors.append(ChinaTelecomSensor(coordinator, "voiceBalance", f"{masked_phonenum} 通话剩余", "分钟", "mdi:phone", device_id))
-    # 新增通话使用率传感器
+    # 通话使用率传感器
     sensors.append(ChinaTelecomSensor(coordinator, "voicePercentUsed", f"{masked_phonenum} 通话使用率", "%", "mdi:percent", device_id))
 
+    # 积分传感器
+    sensors.append(ChinaTelecomSensor(coordinator, "points", f"{masked_phonenum} 电信积分", "分", "mdi:trophy", device_id))
 
+    async_add_entities(sensors)
     async_add_entities(sensors)
 
 
