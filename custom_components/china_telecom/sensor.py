@@ -7,10 +7,10 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.device_registry import DeviceEntryType
 
-from .const import DOMAIN, CONF_PHONENUM, CONF_PASSWORD, CONF_DEVICE_ID #
+from .const import DOMAIN, CONF_PHONENUM, CONF_PASSWORD, CONF_DEVICE_ID 
 
 # 导入 telecom_class
-from .telecom_class import Telecom #
+from .telecom_class import Telecom 
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         device_id = entry.data[CONF_DEVICE_ID]
 
     coordinator = ChinaTelecomDataUpdateCoordinator(
-        hass, phonenum, password 
+        hass, phonenum, password  
     )
     await coordinator.async_refresh()
 
@@ -66,8 +66,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     # 积分传感器
     sensors.append(ChinaTelecomSensor(coordinator, "points", f"{masked_phonenum} 电信积分", "分", "mdi:trophy", device_id))
 
-    async_add_entities(sensors)
-    async_add_entities(sensors)
+    async_add_entities(sensors) # 移除重复的调用
 
 
 class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
@@ -93,13 +92,13 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
             # 需要在 Home Assistant 的事件循环中以异步方式运行它们。
             login_result = await self.hass.async_add_executor_job(
                 self.telecom.do_login, self.phonenum, self.password
-            ) #
+            ) 
 
             if login_result.get("responseData", {}).get("resultCode") == "0000":
                 login_info = login_result["responseData"]["data"]["loginSuccessResult"]
                 login_info["phonenum"] = self.phonenum
                 login_info["password"] = self.password # 存储密码以便后续查询使用
-                self.telecom.set_login_info(login_info) #
+                self.telecom.set_login_info(login_info) 
                 _LOGGER.debug(f"Successfully logged in for {self.phonenum}.")
             else:
                 error_msg = login_result.get("responseData", {}).get("data", {}).get("loginFailResult", {}).get("reason", "未知登录失败")
@@ -109,13 +108,13 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
             # 获取重要数据
             important_data_raw = await self.hass.async_add_executor_job(
                 self.telecom.qry_important_data
-            ) #
+            ) 
 
             if important_data_raw.get("responseData"):
                 _LOGGER.debug(f"Successfully fetched important data for {self.phonenum}.")
                 summary_data = await self.hass.async_add_executor_job(
                     self.telecom.to_summary, important_data_raw["responseData"]["data"], self.phonenum
-                ) #
+                ) 
                 
                 # CTM 的 to_summary 返回的数据单位是“分”和“KB”，需要转换为“元”和“GB”
                 processed_data = {
@@ -133,7 +132,7 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
                     "commonOver": round(self.telecom.convert_flow(summary_data.get("commonOver", 0), 'GB', 2), 2), # KB 转 GB
                     "specialUse": round(self.telecom.convert_flow(summary_data.get("specialUse", 0), 'GB', 2), 2), # KB 转 GB
                     "specialTotal": round(self.telecom.convert_flow(summary_data.get("specialTotal", 0), 'GB', 2), 2), # KB 转 GB
-                    "points": 0 # CTM 的 to_summary 没有直接提供积分，这里暂设为0
+                    "points": summary_data.get("points", 0) # 从 summary_data 获取积分，而不是硬编码为0
                 }
                 
                 # 计算流量使用率
@@ -147,7 +146,8 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
                     processed_data["voicePercentUsed"] = round((processed_data["voiceUsage"] / processed_data["voiceTotal"]) * 100, 1)
                 else:
                     processed_data["voicePercentUsed"] = 0
-
+                
+                _LOGGER.debug(f"Processed data before returning: {processed_data}")
                 return processed_data
 
             elif important_data_raw.get("headerInfos", {}).get("code") == "X201":
@@ -155,20 +155,20 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
                 # Token 过期，再次尝试登录并重新获取数据
                 relogin_result = await self.hass.async_add_executor_job(
                     self.telecom.do_login, self.phonenum, self.password
-                ) #
+                ) 
                 if relogin_result.get("responseData", {}).get("resultCode") == "0000":
                     relogin_info = relogin_result["responseData"]["data"]["loginSuccessResult"]
                     relogin_info["phonenum"] = self.phonenum
                     relogin_info["password"] = self.password
-                    self.telecom.set_login_info(relogin_info) #
+                    self.telecom.set_login_info(relogin_info) 
                     _LOGGER.debug(f"Successfully re-logged in for {self.phonenum}.")
                     important_data_raw = await self.hass.async_add_executor_job(
                         self.telecom.qry_important_data
-                    ) #
+                    ) 
                     if important_data_raw.get("responseData"):
                         summary_data = await self.hass.async_add_executor_job(
                             self.telecom.to_summary, important_data_raw["responseData"]["data"], self.phonenum
-                        ) #
+                        ) 
                         processed_data = {
                             "balance": round(summary_data.get("balance", 0) / 100, 2), # 分转元
                             "currentMonthCost": round(summary_data.get("currentMonthCost", 0) / 100, 2), # 新增：分转元
@@ -184,7 +184,7 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
                             "commonOver": round(self.telecom.convert_flow(summary_data.get("commonOver", 0), 'GB', 2), 2),
                             "specialUse": round(self.telecom.convert_flow(summary_data.get("specialUse", 0), 'GB', 2), 2),
                             "specialTotal": round(self.telecom.convert_flow(summary_data.get("specialTotal", 0), 'GB', 2), 2),
-                            "points": 0
+                            "points": summary_data.get("points", 0) # 从 summary_data 获取积分，而不是硬编码为0
                         }
                         if processed_data["flowTotal"] > 0:
                             processed_data["percentUsed"] = round((processed_data["flowUse"] / processed_data["flowTotal"]) * 100, 2)
@@ -270,7 +270,7 @@ class ChinaTelecomSensor(Entity):
             "name": f"{self.masked_phonenum} 套餐信息",
             "manufacturer": "中国电信",
             "entry_type": DeviceEntryType.SERVICE,
-            "model": "CTM中国电信", # 
+            "model": "CTM中国电信", 
             "sw_version": "1.0.7" 
         }
 
