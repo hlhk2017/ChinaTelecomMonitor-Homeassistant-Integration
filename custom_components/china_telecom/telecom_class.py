@@ -245,7 +245,7 @@ PMpq0/XKBO8lYhN/gwIDAQAB
             current_month_cost = 0 # 转换失败则设为0
         
         # 积分
-        points = int(integral_info.get("integral", 0) or 0)
+        points = int(integralInfo.get("integral", 0) or 0)
 
         # ==========================
         # 流量包列表
