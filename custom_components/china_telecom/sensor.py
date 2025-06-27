@@ -271,7 +271,7 @@ class ChinaTelecomSensor(Entity):
             "manufacturer": "中国电信",
             "entry_type": DeviceEntryType.SERVICE,
             "model": "CTM中国电信", 
-            "sw_version": "1.0.7" 
+            "sw_version": "1.0.8" 
         }
 
     @property
