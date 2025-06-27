@@ -208,6 +208,7 @@ PMpq0/XKBO8lYhN/gwIDAQAB
         # Default to empty dicts if flowInfo or voiceInfo are None
         flow_info = data.get("flowInfo") or {}
         voice_info = data.get("voiceInfo") or {}
+        integral_info = data.get("integralInfo") or {} # Get integralInfo
 
         # 总流量
         total_amount = flow_info.get("totalAmount") or {}
@@ -242,6 +243,10 @@ PMpq0/XKBO8lYhN/gwIDAQAB
             current_month_cost = int(float(current_month_cost_str) * 100) # 转换为分
         except ValueError:
             current_month_cost = 0 # 转换失败则设为0
+        
+        # 积分
+        points = int(integral_info.get("integral", 0) or 0)
+
         # ==========================
         # 流量包列表
         flowItems = []
@@ -296,6 +301,7 @@ PMpq0/XKBO8lYhN/gwIDAQAB
             "commonOver": common_over,
             "specialUse": special_use,
             "specialTotal": special_total,
+            "points": points, # Add points to summary
             "createTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "flowItems": flowItems,
         }
