@@ -5,7 +5,7 @@
     "requirements": ["aiohttp", "voluptuous"],
     "dependencies": [],
     "codeowners": ["@hlhk2017"],
-    "version": "1.0.8",
+    "version": "1.0.9",
     "iot_class": "cloud_polling",
     "loggers": ["custom_components.china_telecom"],
     "config_flow": true
