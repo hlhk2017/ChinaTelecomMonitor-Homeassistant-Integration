@@ -4,7 +4,6 @@
 
 **本项目已将数据获取功能与 Home Assistant 集成合二为一，不再需要单独部署 `ChinaTelecomMonitor` 的 API 服务。**
 
-**部分homeassistant环境无法使用新版本（即自带api的版本，请继续1.03版本配合docker部署的api使用）**
 ## 特性
 
 * **一体化部署：** 无需额外的 Docker API 服务，直接在 Home Assistant 中配置和运行。
@@ -14,7 +13,6 @@
 * **Home Assistant 原生体验：** 作为 HACS 集成或自定义组件安装，提供友好的配置界面。
 
 ## 效果展示
-
 
 
 UI配置框：
