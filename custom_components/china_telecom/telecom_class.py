@@ -9,8 +9,35 @@ from datetime import datetime
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
 import logging 
+import ssl
+from requests.adapters import HTTPAdapter
+from urllib3.util.ssl_ import create_urllib3_context
+import certifi
 
 _LOGGER = logging.getLogger(__name__) 
+
+class TelecomSSLAdapter(HTTPAdapter):
+    """自定义适配器解决SSL证书问题"""
+    def __init__(self):
+        # 首先定义 ssl_context 属性
+        self.ssl_context = None
+        
+        # 然后调用父类初始化
+        super().__init__()
+        
+    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+        # 延迟创建 SSL 上下文（第一次使用时创建）
+        if self.ssl_context is None:
+            # 创建 SSL 上下文
+            self.ssl_context = create_urllib3_context()
+            # 降低安全级别以兼容旧服务器
+            self.ssl_context.set_ciphers('DEFAULT:@SECLEVEL=1')
+            # 加载证书
+            self.ssl_context.load_verify_locations(cafile=certifi.where())
+        
+        # 使用创建的 SSL 上下文
+        pool_kwargs['ssl_context'] = self.ssl_context
+        return super().init_poolmanager(connections, maxsize, block, **pool_kwargs)
 
 class Telecom:
     def __init__(self):
@@ -26,6 +53,14 @@ class Telecom:
             "Accept-Encoding": "gzip",
             "user-agent": "P216010901",
         }
+        
+        # 创建会话并使用自定义适配器
+        self.session = requests.Session()
+        adapter = TelecomSSLAdapter()
+        self.session.mount("https://", adapter)
+        
+        # 设置验证使用 certifi
+        self.session.verify = certifi.where()
 
     def set_login_info(self, login_info):
         self.login_info = login_info
@@ -92,12 +127,31 @@ PMpq0/XKBO8lYhN/gwIDAQAB
                 "userLoginName": self.trans_number(phonenum),
             },
         }
-        response = requests.post(
-            "https://appgologin.189.cn:9031/login/client/userLoginNormal",
-            headers=self.headers,
-            json=body,
-        )
-        return response.json()
+        try:
+            response = self.session.post(
+                "https://appgologin.189.cn:9031/login/client/userLoginNormal",
+                headers=self.headers,
+                json=body,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.SSLError as ssl_err:
+            _LOGGER.error(f"SSL验证失败: {ssl_err}")
+            _LOGGER.warning("尝试临时禁用SSL验证...")
+            # 使用独立的会话临时禁用验证
+            temp_session = requests.Session()
+            response = temp_session.post(
+                "https://appgologin.189.cn:9031/login/client/userLoginNormal",
+                headers=self.headers,
+                json=body,
+                verify=False,
+                timeout=30
+            )
+            return response.json()
+        except requests.exceptions.RequestException as req_err:
+            _LOGGER.error(f"请求失败: {req_err}")
+            return {"error": str(req_err)}
 
     def qry_important_data(self, **kwargs):
         ts = datetime.now().strftime("%Y%m%d%H%M00")
@@ -123,12 +177,18 @@ PMpq0/XKBO8lYhN/gwIDAQAB
                 "token": kwargs.get("token") or self.token,
             },
         }
-        response = requests.post(
-            "https://appfuwu.189.cn:9021/query/qryImportantData",
-            headers=self.headers,
-            json=body,
-        )
-        return response.json()
+        try:
+            response = self.session.post(
+                "https://appfuwu.189.cn:9021/query/qryImportantData",
+                headers=self.headers,
+                json=body,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            _LOGGER.error(f"查询重要数据失败: {e}")
+            return {}
 
     def user_flux_package(self, **kwargs):
         billing_cycle = kwargs.get("billing_cycle") or datetime.now().strftime("%Y%m")
@@ -153,12 +213,18 @@ PMpq0/XKBO8lYhN/gwIDAQAB
                 "token": kwargs.get("token") or self.token,
             },
         }
-        response = requests.post(
-            "https://appfuwu.189.cn:9021/query/userFluxPackage",
-            headers=self.headers,
-            json=body,
-        )
-        return response.json()
+        try:
+            response = self.session.post(
+                "https://appfuwu.189.cn:9021/query/userFluxPackage",
+                headers=self.headers,
+                json=body,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            _LOGGER.error(f"查询流量包失败: {e}")
+            return {}
 
     def qry_share_usage(self, **kwargs):
         billing_cycle = kwargs.get("billing_cycle") or datetime.now().strftime("%Y%m")
@@ -182,25 +248,31 @@ PMpq0/XKBO8lYhN/gwIDAQAB
                 "token": kwargs.get("token") or self.token,
             },
         }
-        response = requests.post(
-            "https://appfuwu.189.cn:9021/query/qryShareUsage",
-            headers=self.headers,
-            json=body,
-        )
-        data = response.json()
-        # 返回的号码字段加密，需做解密转换
-        if data.get("responseData") and data.get("responseData").get("data", {}).get(
-            "sharePhoneBeans", []
-        ):
-            for item in data["responseData"]["data"]["sharePhoneBeans"]:
-                item["sharePhoneNum"] = self.trans_number(item["sharePhoneNum"], False)
-            for share_type in data["responseData"]["data"]["shareTypeBeans"]:
-                for share_info in share_type["shareUsageInfos"]:
-                    for share_amount in share_info["shareUsageAmounts"]:
-                        share_amount["phoneNum"] = self.trans_number(
-                            share_amount["phoneNum"], False
-                        )
-        return data
+        try:
+            response = self.session.post(
+                "https://appfuwu.189.cn:9021/query/qryShareUsage",
+                headers=self.headers,
+                json=body,
+                timeout=30
+            )
+            response.raise_for_status()
+            data = response.json()
+            # 返回的号码字段加密，需做解密转换
+            if data.get("responseData") and data.get("responseData").get(
+                "data", {}
+            ).get("sharePhoneBeans", []):
+                for item in data["responseData"]["data"]["sharePhoneBeans"]:
+                    item["sharePhoneNum"] = self.trans_number(item["sharePhoneNum"], False)
+                for share_type in data["responseData"]["data"]["shareTypeBeans"]:
+                    for share_info in share_type["shareUsageInfos"]:
+                        for share_amount in share_info["shareUsageAmounts"]:
+                            share_amount["phoneNum"] = self.trans_number(
+                                share_amount["phoneNum"], False
+                            )
+            return data
+        except requests.exceptions.RequestException as e:
+            _LOGGER.error(f"查询共享使用情况失败: {e}")
+            return {}
 
     def to_summary(self, data, phonenum=""):
         if not data:

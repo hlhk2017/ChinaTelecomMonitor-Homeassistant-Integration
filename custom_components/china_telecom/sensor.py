@@ -66,7 +66,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     # 积分传感器
     sensors.append(ChinaTelecomSensor(coordinator, "points", f"{masked_phonenum} 电信积分", "分", "mdi:trophy", device_id))
 
-    async_add_entities(sensors) # 移除重复的调用
+    async_add_entities(sensors)
 
 
 class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):

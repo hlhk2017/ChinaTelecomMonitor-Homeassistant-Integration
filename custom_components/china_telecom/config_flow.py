@@ -1,6 +1,6 @@
 import voluptuous as vol
 from homeassistant import config_entries
-from .const import DOMAIN, CONF_PHONENUM, CONF_PASSWORD # 移除 CONF_API_URL
+from .const import DOMAIN, CONF_PHONENUM, CONF_PASSWORD
 import re
 import logging
 
