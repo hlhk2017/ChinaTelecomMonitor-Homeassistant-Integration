@@ -1,0 +1,51 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "data": {
+                    "phonenum": "电信手机号",
+                    "password": "服务密码"
+                },
+                "title": "中国电信",
+                "description": "请填写您的中国电信账号信息。"
+            }
+        },
+        "abort": {
+            "already_configured": "该手机号码已被配置。"
+        },
+        "error": {
+            "invalid_phone_number": "无效的手机号码，请输入 11 位数字的手机号码",
+            "unknown_error_config": "配置过程中出现未知错误，请重试",
+            "import_failed": "从配置文件导入失败。",
+            "import_error": "从配置文件导入时出现错误。",
+            "unknown_error_import": "从配置文件导入时出现未知错误。",
+            "login_failed": "登录失败，请检查手机号或服务密码是否正确。",
+            "data_fetch_failed": "数据获取失败，请稍后再试。",
+            "relogin_failed": "重新登录失败。"
+        }
+    },
+    "entity": {
+        "sensor": {
+            "name": {
+                "balance": "{masked_phonenum} 电信账户余额",
+                "current_month_cost": "{masked_phonenum} 电信本月消费",
+                "flow_total": "{masked_phonenum} 流量总量",
+                "flow_use": "{masked_phonenum} 流量已用",
+                "flow_balance": "{masked_phonenum} 流量剩余",
+                "flow_over": "{masked_phonenum} 流量超量",
+                "common_total": "{masked_phonenum} 通用流量总量",
+                "common_use": "{masked_phonenum} 通用流量已用",
+                "common_over": "{masked_phonenum} 通用流量超量",
+                "special_total": "{masked_phonenum} 专用流量总量",
+                "special_use": "{masked_phonenum} 专用流量已用",
+                "percent_used": "{masked_phonenum} 流量使用率",
+                "voice_total": "{masked_phonenum} 通话总量",
+                "voice_usage": "{masked_phonenum} 通话已用",
+                "voice_balance": "{masked_phonenum} 通话剩余",
+                "voice_percent_used": "{masked_phonenum} 通话使用率",
+                "points": "{masked_phonenum} 电信积分"
+            }
+        }
+    },
+    "title": "CTM电信"
+}
