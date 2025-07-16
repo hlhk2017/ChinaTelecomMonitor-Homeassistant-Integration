@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# _*_ coding:utf-8 _*_
-
 import re
 import base64
 import random
@@ -308,10 +305,21 @@ PMpq0/XKBO8lYhN/gwIDAQAB
         voice_balance = int(voice_data_info.get("balance") or 0)
         voice_total = int(voice_data_info.get("total") or 0)
         
-        # 余额
-        balance = int(
-            float(data["balanceInfo"]["indexBalanceDataInfo"]["balance"] or 0) * 100
-        )
+        # 余额处理，包含欠费逻辑
+        balance_info_data = data["balanceInfo"]["indexBalanceDataInfo"]
+        balance_str = balance_info_data.get("balance", "0.00")
+        arrear_str = balance_info_data.get("arrear", "0.00")
+
+        # 将字符串转换为浮点数进行比较和计算
+        balance_float = float(balance_str)
+        arrear_float = float(arrear_str)
+
+        # 逻辑：如果余额为0且有欠费，则将余额设置为负的欠费值
+        if balance_float == 0.00 and arrear_float > 0.00:
+            balance = int(-arrear_float * 100)  # 转换为分并取负值
+        else:
+            balance = int(balance_float * 100)  # 转换为分
+
         current_month_cost_str = data["balanceInfo"].get("phoneBillRegion", {}).get("subTitleHh", "0元").replace('元', '')
         try:
             current_month_cost = int(float(current_month_cost_str) * 100) # 转换为分
