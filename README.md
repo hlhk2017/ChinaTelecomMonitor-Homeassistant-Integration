@@ -47,6 +47,12 @@ UI配置框：
 4.  前往 **“设置 → 设备与服务 → 添加集成”**。
 5.  搜索 **CTM电信**，点击添加并完成配置。
 
+### 卡片配置
+
+<img width="941" height="751" alt="image" src="https://github.com/user-attachments/assets/a1cfc708-0168-4741-afc2-2964765c4eee" />
+
+新增一个卡片，配置集成后自动注册，添加卡片搜ctm即可，只需要选择对应的设备。
+
 ## 感谢
 
 本项目核心数据获取逻辑大量参考了 [Cp0204/ChinaTelecomMonitor](https://github.com/Cp0204/ChinaTelecomMonitor) 项目的代码，在此表示衷心感谢！
