@@ -375,15 +375,50 @@ class CtmTelecomCard extends HTMLElement {
             margin-top: 4px;
             overflow-wrap: anywhere;
           }
-          @media (max-width: 620px) {
+          @media (max-width: 480px) {
+            .ctm-card {
+              padding: 14px;
+            }
+            .summary {
+              grid-template-columns: repeat(3, minmax(0, 1fr));
+              gap: 6px;
+            }
             .entity-grid {
-              grid-template-columns: repeat(2, minmax(0, 1fr));
+              grid-template-columns: repeat(3, minmax(0, 1fr));
+              gap: 6px;
+            }
+            .metric {
+              padding: 8px;
+            }
+            .metric ha-icon {
+              --mdc-icon-size: 16px;
+            }
+            .metric-label,
+            .row-name,
+            .meter-top {
+              font-size: 11px;
+            }
+            .metric-value {
+              font-size: 14px;
+            }
+            .entity-row {
+              padding: 8px;
+            }
+            .row-value {
+              font-size: 13px;
+            }
+            .meter-detail {
+              font-size: 12px;
             }
           }
-          @media (max-width: 480px) {
+          @media (max-width: 360px) {
             .summary,
             .entity-grid {
-              grid-template-columns: 1fr;
+              gap: 5px;
+            }
+            .metric,
+            .entity-row {
+              padding: 7px;
             }
           }
         </style>
