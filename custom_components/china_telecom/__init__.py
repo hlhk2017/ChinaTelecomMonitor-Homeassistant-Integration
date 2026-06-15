@@ -116,19 +116,42 @@ async def async_register_lovelace_resource(hass: HomeAssistant) -> None:
 
 async def async_register_card_static_path(hass: HomeAssistant) -> None:
     """Expose the bundled frontend card from the integration directory."""
-    if hass.data.setdefault(DOMAIN, {}).get("card_static_path_registered"):
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get("card_static_path_registered"):
         return
 
-    await hass.http.async_register_static_paths(
-        [
-            StaticPathConfig(
-                CARD_RESOURCE_URL,
-                hass.config.path("custom_components", DOMAIN, "www", "ctm-telecom-card.js"),
-                True,
-            )
-        ]
-    )
-    hass.data[DOMAIN]["card_static_path_registered"] = True
+    if _http_route_registered(hass, CARD_RESOURCE_URL):
+        domain_data["card_static_path_registered"] = True
+        return
+
+    try:
+        await hass.http.async_register_static_paths(
+            [
+                StaticPathConfig(
+                    CARD_RESOURCE_URL,
+                    hass.config.path("custom_components", DOMAIN, "www", "ctm-telecom-card.js"),
+                    True,
+                )
+            ]
+        )
+    except RuntimeError as err:
+        if "method GET is already registered" not in str(err):
+            raise
+        if not _http_route_registered(hass, CARD_RESOURCE_URL):
+            raise
+        _LOGGER.debug("CTM Telecom card static path was already registered")
+
+    domain_data["card_static_path_registered"] = True
+
+
+def _http_route_registered(hass: HomeAssistant, url_path: str) -> bool:
+    """Return True when Home Assistant already has a GET route for url_path."""
+    with suppress(Exception):
+        for resource in hass.http.app.router.resources():
+            if getattr(resource, "canonical", None) != url_path:
+                continue
+            return any(route.method in ("GET", "*") for route in resource)
+    return False
 
 
 def _card_resource_version(hass: HomeAssistant) -> str:
