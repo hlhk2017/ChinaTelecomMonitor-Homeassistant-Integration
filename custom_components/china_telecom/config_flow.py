@@ -1,10 +1,24 @@
 import voluptuous as vol
 from homeassistant import config_entries
-from .const import DOMAIN, CONF_PHONENUM, CONF_PASSWORD
+from homeassistant.core import callback
+from .const import (
+    DOMAIN,
+    CONF_PHONENUM,
+    CONF_PASSWORD,
+    CONF_TELECOM_DEVICE_ID,
+    CONF_UPDATE_INTERVAL_MINUTES,
+    DEFAULT_UPDATE_INTERVAL_MINUTES,
+    MIN_UPDATE_INTERVAL_MINUTES,
+)
 import re
 import logging
 
 _LOGGER = logging.getLogger(__name__) # 添加 logger
+
+UPDATE_INTERVAL_SCHEMA = vol.All(
+    vol.Coerce(int),
+    vol.Range(min=MIN_UPDATE_INTERVAL_MINUTES),
+)
 
 
 # 验证手机号码的格式
@@ -14,7 +28,24 @@ def validate_phone_number(phone):
         raise vol.Invalid("无效的手机号码，请输入 11 位数字的手机号码")
     return phone
 
+
+def get_update_interval(config_entry):
+    value = (
+        config_entry.options.get(CONF_UPDATE_INTERVAL_MINUTES)
+        or config_entry.data.get(CONF_UPDATE_INTERVAL_MINUTES)
+        or DEFAULT_UPDATE_INTERVAL_MINUTES
+    )
+    try:
+        return max(int(value), MIN_UPDATE_INTERVAL_MINUTES)
+    except (TypeError, ValueError):
+        return DEFAULT_UPDATE_INTERVAL_MINUTES
+
 class ChinaTelecomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        return ChinaTelecomOptionsFlow(config_entry)
+
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
@@ -41,6 +72,11 @@ class ChinaTelecomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(CONF_PHONENUM): str,
                     vol.Required(CONF_PASSWORD): str,
+                    vol.Optional(CONF_TELECOM_DEVICE_ID): str,
+                    vol.Optional(
+                        CONF_UPDATE_INTERVAL_MINUTES,
+                        default=DEFAULT_UPDATE_INTERVAL_MINUTES,
+                    ): UPDATE_INTERVAL_SCHEMA,
                 }
             ),
             errors=errors,
@@ -62,3 +98,32 @@ class ChinaTelecomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception as e:
             _LOGGER.error(f"从配置文件导入时出现未知错误: {str(e)}")
         return self.async_abort(reason="import_failed")
+
+
+class ChinaTelecomOptionsFlow(config_entries.OptionsFlow):
+    def __init__(self, config_entry):
+        self._config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        telecom_device_id = (
+            self._config_entry.options.get(CONF_TELECOM_DEVICE_ID)
+            or self._config_entry.data.get(CONF_TELECOM_DEVICE_ID)
+            or ""
+        )
+        update_interval_minutes = get_update_interval(self._config_entry)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_TELECOM_DEVICE_ID, default=telecom_device_id): str,
+                    vol.Optional(
+                        CONF_UPDATE_INTERVAL_MINUTES,
+                        default=update_interval_minutes,
+                    ): UPDATE_INTERVAL_SCHEMA,
+                }
+            ),
+        )

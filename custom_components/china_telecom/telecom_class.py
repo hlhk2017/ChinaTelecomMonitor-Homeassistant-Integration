@@ -1,6 +1,6 @@
 import re
 import base64
-import random
+import json
 import requests
 from datetime import datetime
 from Crypto.PublicKey import RSA
@@ -42,13 +42,14 @@ class Telecom:
         self.phonenum = None
         self.password = None
         self.token = None
-        self.client_type = "#12.2.0#channel50#iPhone 14 Pro#"
+        self.login_client_type = "#12.2.0#channel50#iPhone 14 Pro#"
+        self.query_client_type = "#12.2.0#channel50#iPhone 14 Pro#"
+        self.client_type = self.query_client_type
         self.headers = {
             "Accept": "application/json",
             "Content-Type": "application/json; charset=UTF-8",
             "Connection": "Keep-Alive",
             "Accept-Encoding": "gzip",
-            "user-agent": "P216010901",
         }
         
         # 创建会话并使用自定义适配器
@@ -58,6 +59,92 @@ class Telecom:
         
         # 设置验证使用 certifi
         self.session.verify = certifi.where()
+
+    def _mask_value(self, value):
+        if value is None:
+            return None
+        text = str(value)
+        if self.phonenum:
+            text = text.replace(self.phonenum, f"{self.phonenum[:3]}****{self.phonenum[7:]}")
+            text = text.replace(self.trans_number(self.phonenum), "***encoded_phone***")
+        if self.password:
+            text = text.replace(self.password, "***password***")
+            text = text.replace(self.trans_number(self.password), "***encoded_password***")
+        text = re.sub(r"\b(1[3-9]\d)\d{4}(\d{4})\b", r"\1****\2", text)
+        if len(text) <= 8:
+            return "***"
+        return f"{text[:4]}***{text[-4:]}"
+
+    def sanitize_for_log(self, data):
+        sensitive_keys = {
+            "account",
+            "androidid",
+            "authentication",
+            "deviceid",
+            "deviceuid",
+            "loginauthcipherasymmertric",
+            "password",
+            "phonenum",
+            "phoneNum",
+            "sharephonenum",
+            "token",
+            "userId",
+            "userid",
+            "userloginname",
+        }
+        if isinstance(data, dict):
+            sanitized = {}
+            for key, value in data.items():
+                key_lower = str(key).lower()
+                if key_lower in sensitive_keys or "phone" in key_lower or "token" in key_lower:
+                    sanitized[key] = self._mask_value(value)
+                else:
+                    sanitized[key] = self.sanitize_for_log(value)
+            return sanitized
+        if isinstance(data, list):
+            return [self.sanitize_for_log(item) for item in data]
+        if isinstance(data, str):
+            text = data
+            if self.phonenum:
+                text = text.replace(self.phonenum, f"{self.phonenum[:3]}****{self.phonenum[7:]}")
+                text = text.replace(self.trans_number(self.phonenum), "***encoded_phone***")
+            if self.password:
+                text = text.replace(self.password, "***password***")
+                text = text.replace(self.trans_number(self.password), "***encoded_password***")
+            return re.sub(r"\b(1[3-9]\d)\d{4}(\d{4})\b", r"\1****\2", text)
+        return data
+
+    def format_for_log(self, data):
+        try:
+            return json.dumps(self.sanitize_for_log(data), ensure_ascii=False, sort_keys=True)
+        except TypeError:
+            return str(self.sanitize_for_log(str(data)))
+
+    def _response_json(self, response, context):
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {
+                "error": "non_json_response",
+                "status_code": response.status_code,
+                "text": response.text,
+            }
+            _LOGGER.error(
+                "China Telecom %s returned non-JSON response: status=%s headers=%s body=%s",
+                context,
+                response.status_code,
+                self.format_for_log(dict(response.headers)),
+                self.format_for_log(response.text),
+            )
+            return payload
+
+        _LOGGER.debug(
+            "China Telecom %s response: status=%s body=%s",
+            context,
+            response.status_code,
+            self.format_for_log(payload),
+        )
+        return payload
 
     def set_login_info(self, login_info):
         self.login_info = login_info
@@ -93,34 +180,42 @@ PMpq0/XKBO8lYhN/gwIDAQAB
         ).days
         return int((fee_remain_flow / days_in_month))
 
-    def do_login(self, phonenum, password):
-        phonenum = phonenum or self.phonenum
-        password = password or self.password
-        uuid = str(random.randint(1000000000000000, 9999999999999999))
-        ts = datetime.now().strftime("%Y%m%d%H%M%S")
-        enc_str = f"iPhone 14 13.2.{uuid[:12]}{phonenum}{ts}{password}0$$$0."
+    def do_login(self, phonenum, password, telecom_device_id=""):
+        phonenum = str(phonenum or self.phonenum)
+        password = str(password or self.password)
+        telecom_device_id = str(telecom_device_id or "").strip()
+        self.phonenum = phonenum
+        self.password = password
+        ts = datetime.now().strftime("%Y%m%d%H%M00")
+        system_version = "15.4.0"
+        device_uid = f"3{phonenum}"
+        trusted_device_for_sign = telecom_device_id[:12] if telecom_device_id else phonenum
+        enc_str = (
+            f"iPhone 14 {system_version}"
+            f"{trusted_device_for_sign}{phonenum}{ts}{password}0$$$0."
+        )
         body = {
             "content": {
                 "fieldData": {
                     "accountType": "",
                     "authentication": self.trans_number(password),
-                    "deviceUid": uuid[:16],
-                    "isChinatelecom": "",
+                    "deviceUid": device_uid,
+                    "isChinatelecom": "0",
                     "loginAuthCipherAsymmertric": self.encrypt(enc_str),
                     "loginType": "4",
                     "phoneNum": self.trans_number(phonenum),
-                    "systemVersion": "13.2.3",
+                    "systemVersion": system_version,
+                    "androidId": self.trans_number(telecom_device_id) if telecom_device_id else "",
                 },
-                "attach": "test",
+                "attach": "iPhone",
             },
             "headerInfos": {
                 "code": "userLoginNormal",
-                "clientType": self.client_type,
+                "clientType": self.login_client_type,
                 "timestamp": ts,
                 "shopId": "20002",
                 "source": "110003",
                 "sourcePassword": "Sid98s",
-                "token": "",
                 "userLoginName": self.trans_number(phonenum),
             },
         }
@@ -132,7 +227,7 @@ PMpq0/XKBO8lYhN/gwIDAQAB
                 timeout=30
             )
             response.raise_for_status()
-            return response.json()
+            return self._response_json(response, "login")
         except requests.exceptions.SSLError as ssl_err:
             _LOGGER.error(f"SSL验证失败: {ssl_err}")
             _LOGGER.warning("尝试临时禁用SSL验证...")
@@ -145,32 +240,38 @@ PMpq0/XKBO8lYhN/gwIDAQAB
                 verify=False,
                 timeout=30
             )
-            return response.json()
+            response.raise_for_status()
+            return self._response_json(response, "login without SSL verification")
         except requests.exceptions.RequestException as req_err:
             _LOGGER.error(f"请求失败: {req_err}")
-            return {"error": str(req_err)}
+            result = {"error": str(req_err)}
+            response = getattr(req_err, "response", None)
+            if response is not None:
+                result["status_code"] = response.status_code
+                result["text"] = response.text
+            return result
 
     def qry_important_data(self, **kwargs):
         ts = datetime.now().strftime("%Y%m%d%H%M00")
+        account = self.phonenum
         body = {
             "content": {
                 "fieldData": {
-                    "provinceCode": self.login_info["provinceCode"] or "600101",
-                    "cityCode": self.login_info["cityCode"] or "8441900",
+                    "provinceCode": self.login_info.get("provinceCode") or "600101",
+                    "cityCode": self.login_info.get("cityCode") or "8441900",
                     "shopId": "20002",
                     "isChinatelecom": "0",
-                    "account": self.trans_number(self.phonenum),
-                },
-                "attach": "test",
+                    "account": self.trans_number(account),
+                }
             },
             "headerInfos": {
-                "code": "userFluxPackage",
-                "clientType": self.client_type,
+                "code": "qryImportantData",
+                "clientType": self.query_client_type,
                 "timestamp": ts,
                 "shopId": "20002",
                 "source": "110003",
                 "sourcePassword": "Sid98s",
-                "userLoginName": self.trans_number(self.phonenum),
+                "userLoginName": self.trans_number(account),
                 "token": kwargs.get("token") or self.token,
             },
         }
@@ -182,10 +283,15 @@ PMpq0/XKBO8lYhN/gwIDAQAB
                 timeout=30
             )
             response.raise_for_status()
-            return response.json()
+            return self._response_json(response, "qryImportantData")
         except requests.exceptions.RequestException as e:
             _LOGGER.error(f"查询重要数据失败: {e}")
-            return {}
+            result = {"error": str(e)}
+            response = getattr(e, "response", None)
+            if response is not None:
+                result["status_code"] = response.status_code
+                result["text"] = response.text
+            return result
 
     def user_flux_package(self, **kwargs):
         billing_cycle = kwargs.get("billing_cycle") or datetime.now().strftime("%Y%m")
@@ -218,10 +324,10 @@ PMpq0/XKBO8lYhN/gwIDAQAB
                 timeout=30
             )
             response.raise_for_status()
-            return response.json()
+            return self._response_json(response, "userFluxPackage")
         except requests.exceptions.RequestException as e:
             _LOGGER.error(f"查询流量包失败: {e}")
-            return {}
+            return {"error": str(e)}
 
     def qry_share_usage(self, **kwargs):
         billing_cycle = kwargs.get("billing_cycle") or datetime.now().strftime("%Y%m")
@@ -253,7 +359,7 @@ PMpq0/XKBO8lYhN/gwIDAQAB
                 timeout=30
             )
             response.raise_for_status()
-            data = response.json()
+            data = self._response_json(response, "qryShareUsage")
             # 返回的号码字段加密，需做解密转换
             if data.get("responseData") and data.get("responseData").get(
                 "data", {}

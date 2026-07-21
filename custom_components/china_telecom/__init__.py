@@ -38,6 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up China Telecom integration from a config entry."""
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = entry.data
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     await async_register_lovelace_resource(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -59,6 +60,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok
+
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload China Telecom when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_register_lovelace_resource(hass: HomeAssistant) -> None:
@@ -116,42 +122,19 @@ async def async_register_lovelace_resource(hass: HomeAssistant) -> None:
 
 async def async_register_card_static_path(hass: HomeAssistant) -> None:
     """Expose the bundled frontend card from the integration directory."""
-    domain_data = hass.data.setdefault(DOMAIN, {})
-    if domain_data.get("card_static_path_registered"):
+    if hass.data.setdefault(DOMAIN, {}).get("card_static_path_registered"):
         return
 
-    if _http_route_registered(hass, CARD_RESOURCE_URL):
-        domain_data["card_static_path_registered"] = True
-        return
-
-    try:
-        await hass.http.async_register_static_paths(
-            [
-                StaticPathConfig(
-                    CARD_RESOURCE_URL,
-                    hass.config.path("custom_components", DOMAIN, "www", "ctm-telecom-card.js"),
-                    True,
-                )
-            ]
-        )
-    except RuntimeError as err:
-        if "method GET is already registered" not in str(err):
-            raise
-        if not _http_route_registered(hass, CARD_RESOURCE_URL):
-            raise
-        _LOGGER.debug("CTM Telecom card static path was already registered")
-
-    domain_data["card_static_path_registered"] = True
-
-
-def _http_route_registered(hass: HomeAssistant, url_path: str) -> bool:
-    """Return True when Home Assistant already has a GET route for url_path."""
-    with suppress(Exception):
-        for resource in hass.http.app.router.resources():
-            if getattr(resource, "canonical", None) != url_path:
-                continue
-            return any(route.method in ("GET", "*") for route in resource)
-    return False
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                CARD_RESOURCE_URL,
+                hass.config.path("custom_components", DOMAIN, "www", "ctm-telecom-card.js"),
+                True,
+            )
+        ]
+    )
+    hass.data[DOMAIN]["card_static_path_registered"] = True
 
 
 def _card_resource_version(hass: HomeAssistant) -> str:
