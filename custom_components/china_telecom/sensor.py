@@ -1,7 +1,7 @@
 import logging
-import asyncio
+import time
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import uuid
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -16,6 +16,7 @@ from .const import (
     CONF_TELECOM_DEVICE_ID,
     CONF_UPDATE_INTERVAL_MINUTES,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
+    LOGIN_RETRY_COOLDOWN_MINUTES,
     MIN_UPDATE_INTERVAL_MINUTES,
 )
 
@@ -75,6 +76,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # 积分传感器
     sensors.append(ChinaTelecomSensor(coordinator, "points", f"{masked_phonenum} 电信积分", "分", "mdi:trophy", device_id))
+    sensors.append(ChinaTelecomSensor(coordinator, "lastUpdate", f"{masked_phonenum} 数据更新时间", None, "mdi:clock-check", device_id))
 
     async_add_entities(sensors)
 
@@ -93,6 +95,7 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
             or ""
         ).strip()
         self.update_interval_minutes = self._get_update_interval_minutes(entry)
+        self._login_attempts = hass.data.setdefault(DOMAIN, {}).setdefault("login_attempts", {})
         self.telecom = Telecom() # 实例化 Telecom 类
         super().__init__(
             hass,
@@ -155,6 +158,23 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
             return f"{result_code}: {result_desc}"
         return result_desc or result_code or default
 
+    def _is_token_expired(self, payload):
+        if not isinstance(payload, dict):
+            return False
+
+        header_infos = payload.get("headerInfos") or {}
+        response_data = self._response_data(payload)
+        return header_infos.get("code") == "X201" or response_data.get("resultCode") == "X201"
+
+    def _login_cooldown_remaining_seconds(self):
+        last_attempt = self._login_attempts.get(self.entry.entry_id)
+        if last_attempt is None:
+            return 0
+
+        cooldown_seconds = LOGIN_RETRY_COOLDOWN_MINUTES * 60
+        elapsed_seconds = time.monotonic() - last_attempt
+        return max(0, int(cooldown_seconds - elapsed_seconds))
+
     def _log_payload(self, message, payload):
         _LOGGER.error(
             "%s for %s: %s",
@@ -165,27 +185,48 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _process_important_data(self, important_data_raw):
         important_data = self._response_inner_data(important_data_raw)
+
+        flow_info = important_data.get("flowInfo")
+        voice_info = important_data.get("voiceInfo")
+        has_flow_data = isinstance(flow_info, dict) and any(
+            isinstance(flow_info.get(key), dict)
+            for key in ("totalAmount", "commonFlow", "specialAmount")
+        )
+        has_voice_data = isinstance(voice_info, dict) and isinstance(
+            voice_info.get("voiceDataInfo"), dict
+        )
+        has_package_data = has_flow_data or has_voice_data
+
+        if not has_package_data and self.data:
+            _LOGGER.warning(
+                "China Telecom returned balance-only data for %s; keeping the previous sensor values.",
+                self.masked_phonenum,
+            )
+            return dict(self.data)
+
         summary_data = await self.hass.async_add_executor_job(
             self.telecom.to_summary, important_data, self.phonenum
-        ) 
-        
-        # CTM 的 to_summary 返回的数据单位是“分”和“KB”，需要转换为“元”和“GB”
+        )
+
         processed_data = {
-            "balance": round(summary_data.get("balance", 0) / 100, 2), # 分转元
-            "currentMonthCost": round(summary_data.get("currentMonthCost", 0) / 100, 2), # 新增：分转元
+            "balance": round(summary_data.get("balance", 0) / 100, 2),
+            "currentMonthCost": round(summary_data.get("currentMonthCost", 0) / 100, 2),
             "voiceUsage": summary_data.get("voiceUsage", 0),
             "voiceBalance": summary_data.get("voiceBalance", 0),
             "voiceTotal": summary_data.get("voiceTotal", 0),
-            "flowUse": round(self.telecom.convert_flow(summary_data.get("flowUse", 0), 'GB', 2), 2), # KB 转 GB
-            "flowTotal": round(self.telecom.convert_flow(summary_data.get("flowTotal", 0), 'GB', 2), 2), # KB 转 GB
-            "flowBalance": round(self.telecom.convert_flow(summary_data.get("flowTotal", 0) - summary_data.get("flowUse", 0), 'GB', 2), 2), # 计算剩余流量
-            "flowOver": round(self.telecom.convert_flow(summary_data.get("flowOver", 0), 'GB', 2), 2), # KB 转 GB
-            "commonUse": round(self.telecom.convert_flow(summary_data.get("commonUse", 0), 'GB', 2), 2), # KB 转 GB
-            "commonTotal": round(self.telecom.convert_flow(summary_data.get("commonTotal", 0), 'GB', 2), 2), # KB 转 GB
-            "commonOver": round(self.telecom.convert_flow(summary_data.get("commonOver", 0), 'GB', 2), 2), # KB 转 GB
-            "specialUse": round(self.telecom.convert_flow(summary_data.get("specialUse", 0), 'GB', 2), 2), # KB 转 GB
-            "specialTotal": round(self.telecom.convert_flow(summary_data.get("specialTotal", 0), 'GB', 2), 2), # KB 转 GB
-            "points": summary_data.get("points", 0) # 从 summary_data 获取积分，而不是硬编码为0
+            "flowUse": round(self.telecom.convert_flow(summary_data.get("flowUse", 0), "GB", 2), 2),
+            "flowTotal": round(self.telecom.convert_flow(summary_data.get("flowTotal", 0), "GB", 2), 2),
+            "flowBalance": round(self.telecom.convert_flow(summary_data.get("flowTotal", 0) - summary_data.get("flowUse", 0), "GB", 2), 2),
+            "flowOver": round(self.telecom.convert_flow(summary_data.get("flowOver", 0), "GB", 2), 2),
+            "commonUse": round(self.telecom.convert_flow(summary_data.get("commonUse", 0), "GB", 2), 2),
+            "commonTotal": round(self.telecom.convert_flow(summary_data.get("commonTotal", 0), "GB", 2), 2),
+            "commonOver": round(self.telecom.convert_flow(summary_data.get("commonOver", 0), "GB", 2), 2),
+            "specialUse": round(self.telecom.convert_flow(summary_data.get("specialUse", 0), "GB", 2), 2),
+            "specialTotal": round(self.telecom.convert_flow(summary_data.get("specialTotal", 0), "GB", 2), 2),
+            "points": summary_data.get("points", 0),
+            "lastUpdate": datetime.now().astimezone().isoformat(timespec="seconds")
+            if has_package_data
+            else None,
         }
         
         # 计算流量使用率
@@ -207,6 +248,9 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
         cached_login_info = self.entry.data.get(CONF_LOGIN_INFO)
         if not isinstance(cached_login_info, dict):
             return None
+        if not cached_login_info.get("token"):
+            _LOGGER.debug("Cached China Telecom login info has no token for %s.", self.masked_phonenum)
+            return None
 
         cached_login_info = {**cached_login_info}
         cached_login_info["phonenum"] = self.phonenum
@@ -222,9 +266,14 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
             return await self._process_important_data(important_data_raw)
 
         error_msg = self._extract_error_msg(important_data_raw, "缓存 token 不可用")
-        _LOGGER.warning("Cached China Telecom token failed for %s: %s", self.masked_phonenum, error_msg)
-        _LOGGER.debug("Cached token failure response for %s: %s", self.masked_phonenum, self.telecom.format_for_log(important_data_raw))
-        return None
+        if self._is_token_expired(important_data_raw):
+            _LOGGER.warning("Cached China Telecom token expired for %s: %s", self.masked_phonenum, error_msg)
+            _LOGGER.debug("Cached token expired response for %s: %s", self.masked_phonenum, self.telecom.format_for_log(important_data_raw))
+            return None
+
+        _LOGGER.error("Cached China Telecom token query failed for %s: %s", self.masked_phonenum, error_msg)
+        self._log_payload("China Telecom qryImportantData response with cached token", important_data_raw)
+        raise UpdateFailed(f"Cached token query failed: {error_msg}")
 
     def _store_login_info(self, login_info):
         cacheable_login_info = {
@@ -235,39 +284,57 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
         new_data = {**self.entry.data, CONF_LOGIN_INFO: cacheable_login_info}
         self.hass.config_entries.async_update_entry(self.entry, data=new_data)
 
+    async def _login_and_store(self, reason):
+        remaining_seconds = self._login_cooldown_remaining_seconds()
+        if remaining_seconds > 0:
+            remaining_minutes = max(1, (remaining_seconds + 59) // 60)
+            raise UpdateFailed(
+                f"Login skipped: 登录冷却中，请约 {remaining_minutes} 分钟后重试。原因: {reason}"
+            )
+
+        self._login_attempts[self.entry.entry_id] = time.monotonic()
+        _LOGGER.warning(
+            "China Telecom token unavailable for %s (%s). Performing one login; next login is cooled down for %s minutes.",
+            self.masked_phonenum,
+            reason,
+            LOGIN_RETRY_COOLDOWN_MINUTES,
+        )
+        login_result = await self.hass.async_add_executor_job(
+            self.telecom.do_login,
+            self.phonenum,
+            self.password,
+            self.telecom_device_id,
+        )
+
+        login_response_data = self._response_data(login_result)
+        if login_response_data.get("resultCode") != "0000":
+            error_msg = self._extract_error_msg(login_result, "未知登录失败")
+            _LOGGER.error(f"Login failed for {self.masked_phonenum}: {error_msg}")
+            self._log_payload("China Telecom login response", login_result)
+            raise UpdateFailed(f"Login failed: {error_msg}")
+
+        login_info = self._response_inner_data(login_result).get("loginSuccessResult")
+        if not isinstance(login_info, dict):
+            self._log_payload("China Telecom login response", login_result)
+            raise UpdateFailed("Login failed: 登录成功响应缺少 loginSuccessResult")
+
+        login_info["phonenum"] = self.phonenum
+        login_info["password"] = self.password
+        self.telecom.set_login_info(login_info)
+        self._store_login_info(login_info)
+        _LOGGER.debug(f"Successfully logged in for {self.masked_phonenum}.")
+        return login_result
+
     async def _async_update_data(self):
         """Update data via Home Assistant's event loop."""
         login_result = None
         important_data_raw = None
-        relogin_result = None
         try:
             cached_data = await self._try_cached_login_info()
             if cached_data is not None:
                 return cached_data
 
-            login_result = await self.hass.async_add_executor_job(
-                self.telecom.do_login,
-                self.phonenum,
-                self.password,
-                self.telecom_device_id,
-            ) 
-
-            login_response_data = self._response_data(login_result)
-            if login_response_data.get("resultCode") == "0000":
-                login_info = self._response_inner_data(login_result).get("loginSuccessResult")
-                if not isinstance(login_info, dict):
-                    self._log_payload("China Telecom login response", login_result)
-                    raise UpdateFailed("Login failed: 登录成功响应缺少 loginSuccessResult")
-                login_info["phonenum"] = self.phonenum
-                login_info["password"] = self.password
-                self.telecom.set_login_info(login_info) 
-                self._store_login_info(login_info)
-                _LOGGER.debug(f"Successfully logged in for {self.masked_phonenum}.")
-            else:
-                error_msg = self._extract_error_msg(login_result, "未知登录失败")
-                _LOGGER.error(f"Login failed for {self.masked_phonenum}: {error_msg}")
-                self._log_payload("China Telecom login response", login_result)
-                raise UpdateFailed(f"Login failed: {error_msg}")
+            login_result = await self._login_and_store("没有可用缓存 token 或缓存 token 已过期")
 
             # 获取重要数据
             important_data_raw = await self.hass.async_add_executor_job(
@@ -278,53 +345,23 @@ class ChinaTelecomDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug(f"Successfully fetched important data for {self.masked_phonenum}.")
                 return await self._process_important_data(important_data_raw)
 
-            elif isinstance(important_data_raw, dict) and (important_data_raw.get("headerInfos") or {}).get("code") == "X201":
-                _LOGGER.warning(f"Token expired for {self.masked_phonenum}. Attempting re-login and retry.")
-                relogin_result = await self.hass.async_add_executor_job(
-                    self.telecom.do_login,
-                    self.phonenum,
-                    self.password,
-                    self.telecom_device_id,
-                ) 
-                relogin_response_data = self._response_data(relogin_result)
-                if relogin_response_data.get("resultCode") == "0000":
-                    relogin_info = self._response_inner_data(relogin_result).get("loginSuccessResult")
-                    if not isinstance(relogin_info, dict):
-                        self._log_payload("China Telecom re-login response", relogin_result)
-                        raise UpdateFailed("Re-login failed: 登录成功响应缺少 loginSuccessResult")
-                    relogin_info["phonenum"] = self.phonenum
-                    relogin_info["password"] = self.password
-                    self.telecom.set_login_info(relogin_info) 
-                    self._store_login_info(relogin_info)
-                    _LOGGER.debug(f"Successfully re-logged in for {self.masked_phonenum}.")
-                    important_data_raw = await self.hass.async_add_executor_job(
-                        self.telecom.qry_important_data
-                    ) 
-                    if self._response_inner_data(important_data_raw):
-                        return await self._process_important_data(important_data_raw)
-                    else:
-                        error_msg = self._extract_error_msg(important_data_raw, "未知数据获取失败")
-                        _LOGGER.error(f"Failed to fetch data after re-login: {error_msg}")
-                        self._log_payload("China Telecom qryImportantData response after re-login", important_data_raw)
-                        raise UpdateFailed(f"Failed to fetch data after re-login: {error_msg}")
-                else:
-                    relogin_error_msg = self._extract_error_msg(relogin_result, "未知重新登录失败")
-                    _LOGGER.error(f"Re-login failed for {self.masked_phonenum}: {relogin_error_msg}")
-                    self._log_payload("China Telecom re-login response", relogin_result)
-                    raise UpdateFailed(f"Re-login failed: {relogin_error_msg}")
+            error_msg = self._extract_error_msg(important_data_raw, "未知数据获取失败")
+            if self._is_token_expired(important_data_raw):
+                _LOGGER.error(
+                    "Fresh China Telecom token was rejected for %s: %s. Skip immediate re-login to avoid repeated login risk.",
+                    self.masked_phonenum,
+                    error_msg,
+                )
             else:
-                error_msg = self._extract_error_msg(important_data_raw, "未知数据获取失败")
                 _LOGGER.error(f"Failed to fetch data for {self.masked_phonenum}: {error_msg}")
-                self._log_payload("China Telecom qryImportantData response", important_data_raw)
-                raise UpdateFailed(f"Failed to fetch data: {error_msg}")
+            self._log_payload("China Telecom qryImportantData response after login", important_data_raw)
+            raise UpdateFailed(f"Failed to fetch data after login: {error_msg}")
 
         except UpdateFailed:
             raise
         except Exception as error:
             if login_result is not None:
                 self._log_payload("China Telecom last login response before exception", login_result)
-            if relogin_result is not None:
-                self._log_payload("China Telecom last re-login response before exception", relogin_result)
             if important_data_raw is not None:
                 self._log_payload("China Telecom last qryImportantData response before exception", important_data_raw)
             _LOGGER.error(f"Error fetching China Telecom data: {error}", exc_info=True) # 打印详细错误信息

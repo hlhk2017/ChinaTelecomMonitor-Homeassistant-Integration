@@ -188,6 +188,7 @@ PMpq0/XKBO8lYhN/gwIDAQAB
         self.password = password
         ts = datetime.now().strftime("%Y%m%d%H%M00")
         system_version = "15.4.0"
+        # Keep server-side device identity stable. Do not generate a random id per login.
         device_uid = f"3{phonenum}"
         trusted_device_for_sign = telecom_device_id[:12] if telecom_device_id else phonenum
         enc_str = (
@@ -377,12 +378,24 @@ PMpq0/XKBO8lYhN/gwIDAQAB
             _LOGGER.error(f"查询共享使用情况失败: {e}")
             return {}
 
+    @staticmethod
+    def _to_number(value, default=0):
+        if value is None or isinstance(value, bool):
+            return default
+        try:
+            if isinstance(value, str):
+                value = value.strip().replace(",", "")
+                if not value:
+                    return default
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
     def to_summary(self, data, phonenum=""):
         if not data:
             return {}
         phonenum = phonenum or self.phonenum
 
-        # Default to empty dicts if flowInfo or voiceInfo are None
         flow_info = data.get("flowInfo") or {}
         voice_info = data.get("voiceInfo") or {}
         integral_info = data.get("integralInfo") or {}
@@ -412,28 +425,32 @@ PMpq0/XKBO8lYhN/gwIDAQAB
         voice_total = int(voice_data_info.get("total") or 0)
         
         # 余额处理，包含欠费逻辑
-        balance_info_data = data["balanceInfo"]["indexBalanceDataInfo"]
+        balance_info = data.get("balanceInfo") or {}
+        balance_info_data = balance_info.get("indexBalanceDataInfo") or {}
         balance_str = balance_info_data.get("balance", "0.00")
         arrear_str = balance_info_data.get("arrear", "0.00")
 
         # 将字符串转换为浮点数进行比较和计算
-        balance_float = float(balance_str)
-        arrear_float = float(arrear_str)
+        balance_float = self._to_number(balance_str)
+        arrear_float = self._to_number(arrear_str)
 
         # 逻辑：如果余额为0且有欠费，则将余额设置为负的欠费值
         if balance_float == 0.00 and arrear_float > 0.00:
-            balance = int(-arrear_float * 100)  # 转换为分并取负值
+            balance = -int(round(arrear_float * 100))
         else:
-            balance = int(balance_float * 100)  # 转换为分
+            balance = int(round(balance_float * 100))
 
-        current_month_cost_str = data["balanceInfo"].get("phoneBillRegion", {}).get("subTitleHh", "0元").replace('元', '')
+        phone_bill_region = balance_info.get("phoneBillRegion") or {}
+        if not isinstance(phone_bill_region, dict):
+            phone_bill_region = {}
+        current_month_cost_str = str(phone_bill_region.get("subTitleHh") or "0元").replace('元', '')
         try:
-            current_month_cost = int(float(current_month_cost_str) * 100) # 转换为分
+            current_month_cost = int(round(float(current_month_cost_str) * 100))
         except ValueError:
             current_month_cost = 0 # 转换失败则设为0
         
         # 积分
-        points = int(integral_info.get("integral", 0) or 0)
+        points = int(self._to_number(integral_info.get("integral")))
 
         # ==========================
         # 流量包列表
