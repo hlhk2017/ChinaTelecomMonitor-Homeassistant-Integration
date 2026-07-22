@@ -4,6 +4,14 @@
 
 **本项目已将数据获取功能与 Home Assistant 集成合二为一，不再需要单独部署 `ChinaTelecomMonitor` 的 API 服务。**
 
+**参考了[ChinaTelecomOperators/ChinaTelecom](https://github.com/ChinaTelecomOperators/ChinaTelecom)中DeviceId的处理方式。**
+**本次修复后，需要更新集成，获取到 `DeviceId` 后，填入本集成的“短信授权 DeviceId”配置项，再重新加载集成。即可恢复使用**
+## DeviceId的获取：
+### 网站1：https://commissions-yields-exception-personally.trycloudflare.com
+
+### 网站2：https://telecom.nufe.ccwu.cc
+### 先打开网站短信登录授权设备，复制设备id设置环境变量DeviceId='复制的设备id'
+
 ## 特性
 
 * **一体化部署：** 无需额外的 Docker API 服务，直接在 Home Assistant 中配置和运行。
@@ -14,10 +22,10 @@
 
 ## 效果展示
 
-
 UI配置框：
 
-![aaced0ce58f97284af31be2dddcb5a5](https://github.com/user-attachments/assets/a7549c09-f7db-4b3c-8934-104189713018)
+<img width="618" height="579" alt="image" src="https://github.com/user-attachments/assets/b4162ae0-b46b-4732-ba58-448338d74554" />
+
 
 
 实际效果：
