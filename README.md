@@ -10,7 +10,7 @@
 ### 网站1：https://commissions-yields-exception-personally.trycloudflare.com
 
 ### 网站2：https://telecom.nufe.ccwu.cc
-### 先打开网站短信登录授权设备，复制设备id设置环境变量DeviceId='复制的设备id'
+### 先打开网站短信登录授权设备，复制设备id，配置到集成输入框
 
 ## 特性
 
